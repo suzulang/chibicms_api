@@ -5,4 +5,7 @@ Rails.application.routes.draw do
     end
   end
   post 'login', to: 'sessions#create'
+  
+  resources :posts, only: [:index, :create, :update]  # 添加这一行
+
 end

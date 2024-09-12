@@ -13,7 +13,4 @@ class JsonWebToken
     nil
   end
 
-  def self.generate_token_for_user(user)
-    encode(user_id: user.id)
-  end
 end

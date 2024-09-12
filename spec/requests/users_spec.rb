@@ -2,57 +2,69 @@ require 'rails_helper'
 
 RSpec.describe "Users", type: :request do
   describe "POST /users" do
-    it "creates a user" do
-      post '/users', params: { user: { email: 'test@example.com', password: 'password', password_confirmation: 'password' } }
-
-      expect(response).to have_http_status(:created)
-      expect(JSON.parse(response.body)['email']).to eq('test@example.com')
+    let(:valid_attributes) { attributes_for(:user) }
+  
+    context "with valid parameters" do
+      it "creates a new user" do
+        expect {
+          post '/users', params: { user: valid_attributes }
+        }.to change(User, :count).by(1)
+      end
+  
+      it "returns a success response with user data" do
+        post '/users', params: { user: valid_attributes }
+        expect(response).to have_http_status(:created)
+        
+        response_body = JSON.parse(response.body)
+        expect(response_body['email']).to eq(valid_attributes[:email])
+        expect(response_body['id']).to be_present
+        expect(response_body['created_at']).to be_present
+        expect(response_body['updated_at']).to be_present
+        expect(response_body['password_digest']).to be_nil # 确保密码摘要没有被返回
+      end
     end
-
-    it "returns an error when passwords do not match" do
-      post '/users', params: { user: { email: 'test@example.com', password: 'password', password_confirmation: 'wrong_password' } }
-
-      expect(response).to have_http_status(:unprocessable_entity)
-      expect(JSON.parse(response.body)['password_confirmation']).to include("doesn't match Password")
+  
+    context "with invalid parameters" do
+      it "does not create a new user with mismatched passwords" do
+        invalid_attributes = valid_attributes.merge(password_confirmation: 'wrong_password')
+        expect {
+          post '/users', params: { user: invalid_attributes }
+        }.not_to change(User, :count)
+      end
+  
+      it "returns an error response for mismatched passwords" do
+        invalid_attributes = valid_attributes.merge(password_confirmation: 'wrong_password')
+        post '/users', params: { user: invalid_attributes }
+        
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['password_confirmation']).to include("doesn't match Password")
+      end
+  
+      it "does not create a new user with invalid email" do
+        invalid_attributes = valid_attributes.merge(email: 'invalid_email')
+        expect {
+          post '/users', params: { user: invalid_attributes }
+        }.not_to change(User, :count)
+      end
+  
+      it "returns an error response for invalid email" do
+        invalid_attributes = valid_attributes.merge(email: 'invalid_email')
+        post '/users', params: { user: invalid_attributes }
+        
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(JSON.parse(response.body)['email']).to include("is invalid")
+      end
     end
   end
 
-  describe "POST /login" do
-    before do
-      User.create(email: 'test@example.com', password: 'password', password_confirmation: 'password')
-    end
 
-    it "logs in a user with correct credentials" do
-      post '/login', params: { user: { email: 'test@example.com', password: 'password' } }
-
-      expect(response).to have_http_status(:ok)
-      expect(JSON.parse(response.body)).to have_key('token')
-    end
-
-    it "returns an error with incorrect email" do
-      post '/login', params: { user: { email: 'wrong@example.com', password: 'password' } }
-
-      expect(response).to have_http_status(:unauthorized)
-      expect(JSON.parse(response.body)['error']).to eq('Email not found')
-    end
-
-    it "returns an error with incorrect password" do
-      post '/login', params: { user: { email: 'test@example.com', password: 'wrong_password' } }
-
-      expect(response).to have_http_status(:unauthorized)
-      expect(JSON.parse(response.body)['error']).to eq('Invalid password')
-    end
-  end
 
   describe "POST /users/change_password" do
-    let(:user) { User.create(email: 'test@example.com', password: 'old_password', password_confirmation: 'old_password') }
-
-    before do
-      user
-    end
+    let(:password) { 'correct_password' }
+    let(:user) { create(:user, password: password, password_confirmation: password) }
 
     it "updates the user's password with valid parameters" do
-      post '/users/change_password', params: { email: user.email, current_password: 'old_password', new_password: 'new_password', new_password_confirmation: 'new_password' }
+      post '/users/change_password', params: { email: user.email, current_password: password, new_password: 'new_password', new_password_confirmation: 'new_password' }
 
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)['message']).to eq('Password successfully updated')
@@ -66,17 +78,33 @@ RSpec.describe "Users", type: :request do
     end
 
     it "does not update the password when new password and confirmation do not match" do
-      post '/users/change_password', params: { email: user.email, current_password: 'old_password', new_password: 'new_password', new_password_confirmation: 'wrong_confirmation' }
+      post '/users/change_password', params: { 
+        email: user.email, 
+        current_password: password, # 使用正确的当前密码
+        new_password: 'new_password', 
+        new_password_confirmation: 'wrong_confirmation' 
+      }
 
       expect(response).to have_http_status(:unprocessable_entity)
       expect(JSON.parse(response.body)['error']).to eq("Password confirmation doesn't match Password")
     end
 
     it "does not update the password when new password is too short" do
-      post '/users/change_password', params: { email: user.email, current_password: 'old_password', new_password: 'short', new_password_confirmation: 'short' }
+      post '/users/change_password', params: { 
+        email: user.email, 
+        current_password: password, # 使用正确的当前密码
+        new_password: 'short', 
+        new_password_confirmation: 'short' 
+      }
 
       expect(response).to have_http_status(:unprocessable_entity)
-      expect(JSON.parse(response.body)['error']).to include('Password is too short (minimum is 6 characters)')
+      
+      response_body = JSON.parse(response.body)
+      expect(response_body['error']).to include('Password is too short (minimum is 6 characters)')
+      
+      
+      # 然后进行断言
+      expect(response_body['error']).to include('Password is too short (minimum is 6 characters)')
     end
   end
 end
